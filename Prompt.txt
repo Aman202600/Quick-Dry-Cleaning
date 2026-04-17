@@ -1,0 +1,249 @@
+You are an expert MERN stack developer. Build a complete, working Mini Laundry 
+Order Management System from scratch. Follow every instruction below exactly. 
+Do not use placeholder comments. Every function must be fully implemented.
+
+─────────────────────────────────────
+TECH STACK
+─────────────────────────────────────
+- Backend  : Node.js + Express.js (REST API)
+- Database : MongoDB with Mongoose ODM
+- Frontend : React.js (Vite), React Router v6, Axios, plain CSS or Tailwind
+- Auth     : Optional basic JWT auth (bonus)
+
+─────────────────────────────────────
+PROJECT STRUCTURE
+─────────────────────────────────────
+/backend
+  /src
+    /config       → db.js (Mongoose connection)
+    /models       → Order.js
+    /controllers  → order.controller.js, dashboard.controller.js
+    /routes       → order.routes.js, dashboard.routes.js
+    /middlewares  → errorHandler.js
+    /utils        → generateOrderId.js, pricing.js
+  server.js
+  .env
+  .env.example
+
+/frontend
+  /src
+    /api          → axios.js (base instance), orderApi.js
+    /components   → Navbar.jsx, OrderCard.jsx, StatusBadge.jsx, FilterBar.jsx
+    /pages        → CreateOrder.jsx, OrderList.jsx, OrderDetail.jsx, Dashboard.jsx
+    /utils        → formatters.js
+  App.jsx
+  main.jsx
+
+─────────────────────────────────────
+MONGODB SCHEMA — Order
+─────────────────────────────────────
+{
+  orderId      : String, unique, auto-generated (e.g., "ORD-20240601-0001")
+  customerName : String, required, trim
+  phone        : String, required, 10-digit validation
+  garments     : [
+    {
+      type     : String, enum: ['Shirt','Pants','Saree','Jacket','Kurta','Bedsheet','Other']
+      quantity : Number, min 1
+      pricePerItem : Number   ← pulled from pricing config
+      subtotal : Number       ← quantity * pricePerItem (computed before save)
+    }
+  ]
+  totalAmount       : Number   ← sum of all garment subtotals
+  status            : String, enum: ['RECEIVED','PROCESSING','READY','DELIVERED'], default 'RECEIVED'
+  estimatedDelivery : Date     ← auto set to createdAt + 3 days
+  createdAt         : Date, default Date.now
+  updatedAt         : Date
+}
+
+─────────────────────────────────────
+PRICING CONFIG — /utils/pricing.js
+─────────────────────────────────────
+Export a plain object:
+{
+  Shirt    : 50,
+  Pants    : 60,
+  Saree    : 120,
+  Jacket   : 150,
+  Kurta    : 70,
+  Bedsheet : 100,
+  Other    : 80
+}
+When an order is created, look up each garment type in this config,
+set pricePerItem automatically, compute subtotal and totalAmount.
+The frontend should NOT send prices — only garment type and quantity.
+
+─────────────────────────────────────
+BACKEND — ALL API ENDPOINTS
+─────────────────────────────────────
+
+Orders
+  POST   /api/orders
+    Body: { customerName, phone, garments: [{type, quantity}] }
+    Response: { success, data: order, message: "Order created" }
+
+  GET    /api/orders
+    Query params (all optional):
+      status        → filter by status
+      name          → case-insensitive partial match on customerName
+      phone         → exact match
+      garmentType   → filter orders containing this garment type
+    Response: { success, data: [orders] }
+
+  GET    /api/orders/:orderId
+    Response: { success, data: order }
+
+  PATCH  /api/orders/:orderId/status
+    Body: { status }  ← must be valid enum value
+    Validates forward-only transitions:
+      RECEIVED → PROCESSING → READY → DELIVERED
+    Response: { success, data: updatedOrder }
+
+Dashboard
+  GET    /api/dashboard
+    Response:
+    {
+      success: true,
+      data: {
+        totalOrders    : Number,
+        totalRevenue   : Number,
+        ordersByStatus : { RECEIVED: N, PROCESSING: N, READY: N, DELIVERED: N },
+        recentOrders   : [last 5 orders, newest first]
+      }
+    }
+
+─────────────────────────────────────
+FRONTEND — PAGES & FEATURES
+─────────────────────────────────────
+
+/  (Dashboard page)
+  • 4 stat cards: Total Orders, Total Revenue, Pending (RECEIVED+PROCESSING), Delivered
+  • Orders by status (simple bar or number display)
+  • Recent 5 orders table with orderId, customerName, totalAmount, status, date
+
+/orders  (Order List page)
+  • List all orders in a table/card layout
+  • Filter bar at top: dropdowns/inputs for Status, Name, Phone, Garment Type
+  • Each row shows: Order ID, Customer, Phone, Total, Status (colored badge), Estimated Delivery
+  • Clicking a row → /orders/:orderId (detail page)
+  • "Create Order" button → /orders/new
+
+/orders/new  (Create Order page)
+  • Form fields: Customer Name, Phone
+  • Dynamic garment rows: each row has Type (dropdown), Quantity (number input)
+  • "Add Garment" button to add more rows, "Remove" button per row
+  • Live bill preview: show each garment's subtotal and running total as user fills form
+  • On submit: POST to backend, show success with Order ID in a modal or alert
+
+/orders/:orderId  (Order Detail page)
+  • Show all order details
+  • Status update dropdown + "Update Status" button
+  • Show estimated delivery date
+  • Back button
+
+─────────────────────────────────────
+IMPLEMENTATION RULES
+─────────────────────────────────────
+1. generateOrderId.js: format = "ORD-YYYYMMDD-XXXX" where XXXX is a
+   zero-padded daily counter. Use a counter stored in DB or use
+   Date.now() suffix if simpler — just keep it unique and readable.
+
+2. All API responses must follow: { success: Boolean, data: any, message: String }
+
+3. errorHandler.js middleware must catch all async errors and return:
+   { success: false, message: error.message } with appropriate HTTP status.
+
+4. Use express-async-errors or wrap controllers in try/catch.
+
+5. Status transition validation: reject any PATCH request that tries to
+   skip a step or go backwards. Return 400 with a clear message.
+
+6. estimatedDelivery = createdAt + 3 days. Store in DB. Display on frontend
+   formatted as "DD MMM YYYY" (e.g., "05 Jun 2024").
+
+7. CORS: allow all origins in development. Use cors npm package.
+
+8. MongoDB connection in db.js: read URI from process.env.MONGO_URI.
+   Log "MongoDB connected" on success.
+
+9. Frontend Axios instance: base URL from import.meta.env.VITE_API_URL.
+   Add response interceptor to extract data.data automatically.
+
+10. StatusBadge component: color-coded pill.
+    RECEIVED = gray, PROCESSING = blue, READY = green, DELIVERED = dark green.
+
+11. Live bill preview on Create Order page: use React state to recompute
+    total whenever garment type or quantity changes. Import pricing from
+    a frontend copy of the pricing config at /src/utils/pricing.js.
+
+12. Add seed script at backend/seed.js that inserts 10 sample orders
+    with mixed statuses, garment types, and customers. Run with:
+    node seed.js
+
+─────────────────────────────────────
+.env.example
+─────────────────────────────────────
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/laundry_db
+CLIENT_URL=http://localhost:5173
+
+─────────────────────────────────────
+README.md — must include all 4 sections
+─────────────────────────────────────
+## Setup Instructions
+  - Prerequisites, npm install steps for both /backend and /frontend
+  - How to seed: node seed.js
+  - How to run: npm run dev for both
+
+## Features Implemented
+  - Full list of what works
+
+## AI Usage Report
+  - Tools used: Claude / ChatGPT / Copilot
+  - Sample prompts used during development
+  - What AI got wrong and how you fixed it
+  - What you wrote manually
+
+## Tradeoffs
+  - What you skipped
+  - What you'd improve with more time
+
+─────────────────────────────────────
+BONUS (implement all of these)
+─────────────────────────────────────
+- Search by garment type (already in GET /api/orders via garmentType query)
+- Estimated delivery date (already in schema)
+- Simple React frontend (already specified above)
+- Deploy ready: add a Procfile or note Render/Railway deployment steps in README
+
+─────────────────────────────────────
+DELIVERABLES — generate in this order
+─────────────────────────────────────
+1. backend/src/config/db.js
+2. backend/src/utils/pricing.js
+3. backend/src/utils/generateOrderId.js
+4. backend/src/models/Order.js
+5. backend/src/middlewares/errorHandler.js
+6. backend/src/controllers/order.controller.js
+7. backend/src/controllers/dashboard.controller.js
+8. backend/src/routes/order.routes.js
+9. backend/src/routes/dashboard.routes.js
+10. backend/server.js
+11. backend/.env.example
+12. backend/seed.js
+13. frontend/src/utils/pricing.js
+14. frontend/src/api/axios.js
+15. frontend/src/api/orderApi.js
+16. frontend/src/components/Navbar.jsx
+17. frontend/src/components/StatusBadge.jsx
+18. frontend/src/components/FilterBar.jsx
+19. frontend/src/components/OrderCard.jsx
+20. frontend/src/pages/Dashboard.jsx
+21. frontend/src/pages/OrderList.jsx
+22. frontend/src/pages/CreateOrder.jsx
+23. frontend/src/pages/OrderDetail.jsx
+24. frontend/src/App.jsx
+25. frontend/src/main.jsx
+26. README.md
+
+Generate every file completely. No TODOs. No skipped logic.
